@@ -34,3 +34,8 @@ uv.lock
 
 # Docker
 *.pid
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
