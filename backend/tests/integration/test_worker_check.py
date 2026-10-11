@@ -1,4 +1,3 @@
-"""Session 7 — integration tests: worker check cycle end-to-end."""
 import os
 import subprocess
 import sys

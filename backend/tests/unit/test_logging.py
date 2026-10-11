@@ -1,4 +1,3 @@
-"""Unit tests: secret-safe logging (FR-13)."""
 import logging
 
 from backend.app.logging_config import SecretSafeFormatter

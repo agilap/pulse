@@ -1,8 +1,3 @@
-"""Benchmark: measure API latency at the MVP load target (FR-15).
-
-Creates 50 monitors, then measures p50/p95 for list/detail endpoints.
-Records the machine and dataset in the output so results are reproducible.
-"""
 import os
 import platform
 import statistics

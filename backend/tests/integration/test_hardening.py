@@ -1,4 +1,3 @@
-"""Session 11 — integration tests: retention cleanup, concurrency, recovery."""
 import os
 import subprocess
 import sys

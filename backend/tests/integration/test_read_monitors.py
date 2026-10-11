@@ -1,4 +1,3 @@
-"""Session 4 — integration tests: GET /api/v1/monitors + /{id}."""
 import os
 import subprocess
 import sys

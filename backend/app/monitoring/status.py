@@ -1,8 +1,3 @@
-"""Monitor status derivation — FR-08.
-
-The freshness/status formula lives ONLY here. The API derives status from
-this module; the frontend never re-implements it.
-"""
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum

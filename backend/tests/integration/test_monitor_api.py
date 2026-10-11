@@ -1,4 +1,3 @@
-"""Session 9 — integration tests: monitor management + history + incidents API."""
 import os
 import subprocess
 import sys

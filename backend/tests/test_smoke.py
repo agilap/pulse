@@ -1,4 +1,3 @@
-"""Session 1 smoke test — verifies toolchain and config load."""
 from backend.app.config import settings
 
 

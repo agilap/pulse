@@ -1,7 +1,3 @@
-"""Session 8 — integration tests: incident lifecycle.
-
-Per FR-09 and §12 incident state transition.
-"""
 import os
 import subprocess
 import sys

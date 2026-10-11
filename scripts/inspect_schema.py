@@ -1,4 +1,3 @@
-"""Verify schema from the DB side."""
 import psycopg
 
 conn = psycopg.connect("postgresql://pulse:changeme-not-a-real-secret@localhost:5432/pulse")

@@ -1,10 +1,3 @@
-"""Session 3 — integration test: POST /api/v1/monitors.
-
-Tests against a real PostgreSQL database (docker-compose).
-Verifies:
-- Valid create returns 201 with monitor JSON and inserts a row
-- Invalid/unsafe URLs return 4xx and do NOT insert a row
-"""
 import os
 import subprocess
 import sys

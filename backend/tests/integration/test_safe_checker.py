@@ -1,4 +1,3 @@
-"""Session 6 — integration test: safe HTTP check execution."""
 import os
 import subprocess
 import sys

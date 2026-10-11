@@ -1,4 +1,3 @@
-"""Unit tests: URL policy + IP validation logic — no network."""
 import ipaddress
 
 import pytest

@@ -1,4 +1,3 @@
-"""Unit tests: status derivation (FR-08) — no network, no DB."""
 from datetime import datetime, timedelta, timezone
 
 from backend.app.monitoring.status import (

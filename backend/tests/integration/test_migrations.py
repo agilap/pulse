@@ -1,4 +1,3 @@
-"""Integration test: migrations apply cleanly on a fresh database."""
 import os
 import subprocess
 import sys

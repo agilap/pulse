@@ -1,4 +1,3 @@
-"""Database migration runner for Pulse."""
 import os
 from pathlib import Path
 
