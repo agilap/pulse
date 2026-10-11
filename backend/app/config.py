@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Database
-    database_url: str = "postgresql://pulse:pulse@localhost:5432/pulse"
+    database_url: str = "postgresql://pulse:changeme-not-a-real-secret@localhost:5432/pulse"
 
     # Monitor interval bounds (seconds): 60 to 86400
     min_interval_seconds: int = 60

@@ -7,7 +7,7 @@ from psycopg_pool import ConnectionPool
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql://pulse:pulse@localhost:5432/pulse",
+    "postgresql://pulse:changeme-not-a-real-secret@localhost:5432/pulse",
 )
 
 _pool: ConnectionPool | None = None
