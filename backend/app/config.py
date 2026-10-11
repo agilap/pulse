@@ -1,17 +1,9 @@
-"""Environment-validated configuration for Pulse.
-
-All settings come from environment variables (loaded from a local .env file
-in development). Configuration bounds are validated here so unsafe values
-are caught at startup, not at runtime.
-"""
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Pulse configuration."""
-
     # Database
-    database_url: str = "postgresql://pulse:changeme-not-a-real-secret@localhost:5432/pulse"
+    database_url: str = "postgresql://pulse:pulse@localhost:5432/pulse"
 
     # Monitor interval bounds (seconds): 60 to 86400
     min_interval_seconds: int = 60
