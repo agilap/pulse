@@ -38,6 +38,99 @@ def select_monitor(monitor_id: int):
     return row
 
 
+def select_check_history(monitor_id: int, limit: int = 100):
+    """Recent check history, newest first. Bounded by LIMIT (FR-10)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, checked_at, outcome, status_code, latency_ms,
+                   error_code, error_message
+            FROM check_results
+            WHERE monitor_id = %s
+            ORDER BY checked_at DESC
+            LIMIT %s
+            """,
+            (monitor_id, limit),
+        ).fetchall()
+    return rows
+
+
+def select_incidents(monitor_id: int, limit: int = 100):
+    """Incident history for a monitor, newest first."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, started_at, last_failure_at, resolved_at,
+                   failure_count_at_open
+            FROM incidents
+            WHERE monitor_id = %s
+            ORDER BY started_at DESC
+            LIMIT %s
+            """,
+            (monitor_id, limit),
+        ).fetchall()
+    return rows
+
+
+def select_all_incidents(state: str = "all", limit: int = 100):
+    """Incidents across all monitors. state = 'open' | 'resolved' | 'all'."""
+    with get_conn() as conn:
+        if state == "open":
+            rows = conn.execute(
+                """
+                SELECT i.id, i.monitor_id, i.started_at, i.last_failure_at,
+                       i.resolved_at, i.failure_count_at_open, m.url
+                FROM incidents i
+                JOIN monitors m ON m.id = i.monitor_id
+                WHERE i.resolved_at IS NULL
+                ORDER BY i.started_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            ).fetchall()
+        elif state == "resolved":
+            rows = conn.execute(
+                """
+                SELECT i.id, i.monitor_id, i.started_at, i.last_failure_at,
+                       i.resolved_at, i.failure_count_at_open, m.url
+                FROM incidents i
+                JOIN monitors m ON m.id = i.monitor_id
+                WHERE i.resolved_at IS NOT NULL
+                ORDER BY i.started_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT i.id, i.monitor_id, i.started_at, i.last_failure_at,
+                       i.resolved_at, i.failure_count_at_open, m.url
+                FROM incidents i
+                JOIN monitors m ON m.id = i.monitor_id
+                ORDER BY i.started_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            ).fetchall()
+    return rows
+
+
+def has_open_incident(monitor_id: int) -> bool:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM incidents WHERE monitor_id = %s AND resolved_at IS NULL",
+            (monitor_id,),
+        ).fetchone()
+    return row is not None
+
+
+def monitor_exists(monitor_id: int) -> bool:
+    with get_conn() as conn:
+        row = conn.execute("SELECT 1 FROM monitors WHERE id = %s", (monitor_id,)).fetchone()
+    return row is not None
+
+
 def persist_check_result(
     monitor_id: int,
     claim_token: str,
