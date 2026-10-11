@@ -5,6 +5,12 @@ from backend.app.db.core import get_conn
 router = APIRouter()
 
 
+@router.get("/health/live")
+def liveness():
+    """Process liveness — no dependency checks."""
+    return {"status": "alive"}
+
+
 @router.get("/health/ready")
 def readiness():
     """Readiness: reports not-ready if the database is unavailable."""

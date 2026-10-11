@@ -3,7 +3,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from backend.app.api import api_router
-from backend.app.db import close_pool
+from backend.app.db.core import close_pool
+from backend.app.logging_config import configure_logging
+
+configure_logging()
 
 
 @asynccontextmanager
@@ -20,9 +23,3 @@ app = FastAPI(
 )
 
 app.include_router(api_router)
-
-
-@app.get("/health/live")
-async def liveness() -> dict[str, str]:
-    """Process liveness check."""
-    return {"status": "alive"}

@@ -69,6 +69,7 @@ def teardown_function():
 
 def test_create_monitor_valid():
     client = TestClient(app)
+    before = _count_monitors()
     resp = client.post("/api/v1/monitors", json={"url": "https://example.com"})
     assert resp.status_code == 201
     body = resp.json()
@@ -77,7 +78,7 @@ def test_create_monitor_valid():
     assert body["interval_seconds"] == 60
     assert body["enabled"] is True
     assert "next_check_at" in body
-    assert _count_monitors() == 1
+    assert _count_monitors() == before + 1
 
 
 def test_create_monitor_custom_interval():
