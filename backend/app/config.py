@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # HTTP checks
     request_timeout_seconds: float = 10.0
 
+    # Incident threshold (FR-09): consecutive failures that open an incident
+    failure_threshold: int = 3
+
     # Worker
     lease_duration_seconds: float = 30.0
     worker_concurrency: int = 5

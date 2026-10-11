@@ -1,7 +1,7 @@
 import logging
 
 from backend.app.config import settings
-from backend.app.db.queries import insert_check_result, update_monitor_after_check
+from backend.app.db.queries import persist_check_result
 from backend.app.monitoring.checker import execute_check
 from backend.app.worker.claim import claim_due_monitors
 
@@ -20,13 +20,11 @@ def run_check_cycle(worker_id: str) -> int:
     for monitor in claimed:
         try:
             result = execute_check(monitor.url, timeout=settings.request_timeout_seconds)
-            checked_at = _utcnow()
 
-            # Persist result
-            insert_check_result(monitor.id, checked_at, result)
+            from datetime import datetime, timezone
+            checked_at = datetime.now(timezone.utc)
 
-            # Update monitor summary + lease + next check
-            update_monitor_after_check(
+            committed = persist_check_result(
                 monitor_id=monitor.id,
                 claim_token=monitor.lease_token,
                 checked_at=checked_at,
@@ -34,30 +32,29 @@ def run_check_cycle(worker_id: str) -> int:
                 interval_seconds=monitor.interval_seconds,
             )
 
-            logger.info(
-                "check_complete",
-                extra={
-                    "monitor_id": monitor.id,
-                    "url": monitor.url,
-                    "outcome": result.outcome.value,
-                    "status_code": result.status_code,
-                    "latency_ms": result.latency_ms,
-                },
-            )
-            checked += 1
+            if committed:
+                logger.info(
+                    "check_complete",
+                    extra={
+                        "monitor_id": monitor.id,
+                        "outcome": result.outcome.value,
+                        "status_code": result.status_code,
+                        "latency_ms": result.latency_ms,
+                    },
+                )
+                checked += 1
+            else:
+                logger.warning(
+                    "check_discarded_stale_claim",
+                    extra={"monitor_id": monitor.id},
+                )
 
         except Exception:
             # FR-14: a single check failure must not crash the worker loop
             logger.exception(
                 "check_failed",
-                extra={"monitor_id": monitor.id, "url": monitor.url},
+                extra={"monitor_id": monitor.id},
             )
-            # The lease will expire naturally — another worker will reclaim
-            # The monitor stays due since we didn't update next_check_at
+            # Lease expires naturally — another worker reclaims the monitor.
 
     return checked
-
-
-def _utcnow():
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc)
