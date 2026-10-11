@@ -1,8 +1,22 @@
 import ipaddress
+import os
 from urllib.parse import urlsplit, urlunsplit
 
 ALLOWED_SCHEMES = {"http", "https"}
 ALLOWED_PORTS = {80, 443}
+
+
+def _is_test_loopback() -> bool:
+    return os.environ.get("PULSE_ALLOW_LOOPBACK", "") == "1"
+
+
+def _is_loopback_host(host: str) -> bool:
+    """Check if a host string is a literal loopback address."""
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip in (ipaddress.ip_address("127.0.0.1"), ipaddress.ip_address("::1"))
 
 
 class UrlPolicyError(ValueError):
@@ -56,10 +70,11 @@ def parse_and_validate_url(raw_url: str) -> str:
     # Port enforcement (80/443 only, or scheme-default)
     port = parts.port
     if port is not None and port not in ALLOWED_PORTS:
-        raise UrlPolicyError(
-            "prohibited_port",
-            "Only ports 80 and 443 are supported.",
-        )
+        if not (_is_test_loopback() and _is_loopback_host(host)):
+            raise UrlPolicyError(
+                "prohibited_port",
+                "Only ports 80 and 443 are supported.",
+            )
 
     # Normalize: strip default ports, lowercase host, no trailing junk
     normalized = _normalize(parts, host, port, scheme)
@@ -76,8 +91,12 @@ def _reject_private_host(host: str) -> None:
         return
 
     if not ip.is_global:
-        # is_global returns False for loopback, private, link-local,
-        # multicast, reserved, unspecified, etc.
+        # Test-only escape hatch for loopback addresses
+        if _is_test_loopback() and ip in (
+            ipaddress.ip_address("127.0.0.1"),
+            ipaddress.ip_address("::1"),
+        ):
+            return
         raise UrlPolicyError(
             "blocked_destination",
             "The destination address is not a public address.",
