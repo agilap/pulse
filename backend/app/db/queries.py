@@ -271,7 +271,7 @@ def persist_check_result(
                 consecutive_failures = %s,
                 updated_at = NOW()
             WHERE id = %s
-              AND (lease_token = %s OR lease_token IS NULL)
+              AND lease_token = %s
             RETURNING id
             """,
             (

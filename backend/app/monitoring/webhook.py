@@ -115,7 +115,17 @@ def send_webhook(
 
     body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     digest = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
-    host_header = host if port in (80, 443) else f"{host}:{port}"
+    try:
+        host_ip = ipaddress.ip_address(host)
+        host_header = f"[{host}]" if isinstance(host_ip, ipaddress.IPv6Address) else host
+        sni_hostname = None
+    except ValueError:
+        host_header = host.encode("idna").decode("ascii")
+        sni_hostname = host_header
+
+    if port not in (80, 443):
+        host_header = f"{host_header}:{port}"
+
     headers = {
         "Content-Type": "application/json",
         "User-Agent": "Pulse/0.2",
@@ -126,8 +136,8 @@ def send_webhook(
         "X-Pulse-Signature": f"sha256={digest}",
     }
     extensions = {}
-    if scheme == "https":
-        extensions["sni_hostname"] = host.encode("idna")
+    if scheme == "https" and sni_hostname is not None:
+        extensions["sni_hostname"] = sni_hostname
 
     try:
         with httpx.Client(
