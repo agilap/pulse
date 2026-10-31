@@ -16,7 +16,10 @@ def _run_migrations():
     env = os.environ.copy()
     env["DATABASE_URL"] = DATABASE_URL
     result = subprocess.run(
-        [sys.executable, MIGRATE_SCRIPT], capture_output=True, text=True, env=env
+        [sys.executable, MIGRATE_SCRIPT],
+        capture_output=True,
+        text=True,
+        env=env,
     )
     assert result.returncode == 0, f"Migration failed:\n{result.stderr}"
 
@@ -28,13 +31,15 @@ def _connect():
 @pytest.fixture()
 def fresh_db():
     # Wipe + re-migrate for a clean baseline
+    conn = _connect()
+    conn.execute("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;")
+    conn.commit()
+    conn.close()
     _run_migrations()
     yield
     conn = _connect()
-    cur = conn.cursor()
-    cur.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
+    conn.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
     conn.commit()
-    cur.close()
     conn.close()
 
 
@@ -48,6 +53,11 @@ def test_tables_exist(fresh_db):
     tables = [row[0] for row in cur.fetchall()]
     assert "monitors" in tables
     assert "check_results" in tables
+    assert "incidents" in tables
+    assert "webhook_endpoints" in tables
+    assert "notification_events" in tables
+    assert "webhook_deliveries" in tables
+    assert "webhook_delivery_attempts" in tables
     assert "schema_migrations" in tables
     cur.close()
     conn.close()
@@ -89,20 +99,17 @@ def test_monitors_indexes(fresh_db):
 def test_check_results_fk(fresh_db):
     conn = _connect()
     cur = conn.cursor()
-    # Insert a monitor
     cur.execute(
         "INSERT INTO monitors (url, interval_seconds) VALUES (%s, %s) RETURNING id",
         ("https://example.com", 60),
     )
     monitor_id = cur.fetchone()[0]
-    # Insert a check result referencing it — should succeed
     cur.execute(
         "INSERT INTO check_results (monitor_id, outcome, latency_ms) VALUES (%s, %s, %s)",
         (monitor_id, "success", 42),
     )
     conn.commit()
 
-    # Insert referencing a non-existent monitor — should fail (FK constraint)
     cur.execute("BEGIN")
     try:
         cur.execute(
@@ -113,7 +120,6 @@ def test_check_results_fk(fresh_db):
     except psycopg.errors.ForeignKeyViolation:
         conn.rollback()
 
-    # Cascade delete: deleting monitor should remove its check_results
     cur.execute("DELETE FROM monitors WHERE id = %s", (monitor_id,))
     cur.execute("SELECT COUNT(*) FROM check_results WHERE monitor_id = %s", (monitor_id,))
     assert cur.fetchone()[0] == 0
@@ -125,7 +131,6 @@ def test_check_results_fk(fresh_db):
 def test_interval_constraint(fresh_db):
     conn = _connect()
     cur = conn.cursor()
-    # Below minimum interval
     cur.execute("BEGIN")
     try:
         cur.execute(
@@ -136,7 +141,6 @@ def test_interval_constraint(fresh_db):
     except psycopg.errors.CheckViolation:
         conn.rollback()
 
-    # Above maximum interval
     cur.execute("BEGIN")
     try:
         cur.execute(

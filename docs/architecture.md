@@ -11,7 +11,7 @@ tracks incidents, and a dashboard presents status and history.
                 │   Dashboard  │  React + TS (frontend/)
                 │  (port 5173) │  polls /api/v1 every 5s
                 └──────┬───────┘
-                       │ HTTP (vite dev proxy)
+                       │
                        ▼
 ┌──────────────┐   ┌──────────────┐
 │  Worker proc │   │   FastAPI    │
@@ -22,7 +22,7 @@ tracks incidents, and a dashboard presents status and history.
        └────────┬─────────┘
                 ▼
         ┌───────────────┐
-        │  PostgreSQL   │  monitors, check_results, incidents
+        │  PostgreSQL   │
         │ (port 5432)   │
         └───────────────┘
 ```
@@ -35,20 +35,23 @@ in-memory schedule that would be lost on restart.
 
 | Module | Responsibility |
 |---|---|
-| `backend/app/api/` | FastAPI routes: monitor CRUD, check history, incidents, health |
+| `backend/app/api/` | FastAPI routes: monitor CRUD, webhook management, history, health |
 | `backend/app/db/core.py` | psycopg connection pool (`get_conn`) |
-| `backend/app/db/queries.py` | All SQL, parameterized; repository functions |
-| `backend/app/monitoring/url_policy.py` | URL syntax + literal SSRF validation (create time) |
+| `backend/app/db/queries.py` | Monitor and incident SQL; transactional event enqueue |
+| `backend/app/db/webhooks.py` | Webhook endpoint and delivery-history queries |
+| `backend/app/monitoring/url_policy.py` | Monitor URL syntax + literal SSRF validation |
 | `backend/app/monitoring/checker.py` | DNS resolution, IP pinning, safe HTTP GET, outcome classification |
+| `backend/app/monitoring/webhook.py` | Signed outbound POST, webhook URL policy, DNS/IP validation |
 | `backend/app/monitoring/status.py` | Status derivation — the freshness formula lives here ONLY |
 | `backend/app/worker/claim.py` | Atomic due-monitor claim (`FOR UPDATE SKIP LOCKED` + lease) |
-| `backend/app/worker/check_loop.py` | One cycle: claim → check → persist |
-| `backend/app/worker/retention.py` | Batched cleanup of old check results |
+| `backend/app/worker/check_loop.py` | One check cycle: claim → check → persist |
+| `backend/app/worker/webhook_dispatch.py` | Delivery claim, send, retry, and result persistence |
+| `backend/app/worker/retention.py` | Batched cleanup of old check results and terminal notification events |
 | `backend/app/logging_config.py` | Structured JSON logging with secret redaction |
 
 ## Worker claim + lease design
 
-Each check cycle:
+Each monitor check cycle:
 
 1. **Claim** (short transaction): select enabled, due monitors with no live
    lease, lock with `FOR UPDATE SKIP LOCKED`, set a unique `lease_token` and
@@ -58,11 +61,10 @@ Each check cycle:
    non-public, pin the socket to a vetted IP while preserving Host/SNI,
    perform a bounded GET (10s timeout), no redirects.
 3. **Persist** (single transaction): insert the check result, update monitor
-   summary fields and `consecutive_failures`, open/resolve the incident, clear
-   the lease, and schedule the next check at `checked_at + interval_seconds`.
-   The monitor update is guarded by `WHERE lease_token = %s`, so a stale
-   worker whose lease was superseded cannot commit — the whole transaction
-   rolls back and the result is discarded.
+   summary fields and `consecutive_failures`, open/resolve the incident,
+   clear the lease, and schedule the next check at
+   `checked_at + interval_seconds`. Incident state transitions also create
+   notification events and delivery rows in this transaction.
 4. **Recovery**: if a worker crashes mid-check, its lease expires and another
    worker reclaims the still-due monitor. Config validation rejects any
    lease shorter than `timeout + 5s` at startup.
@@ -83,7 +85,7 @@ batches.
 ```
 
 - Below threshold: increment `consecutive_failures`, no incident.
-- At threshold (3): open one incident if none open; otherwise update
+- At threshold (3): open one incident if none is open; otherwise update
   `last_failure_at`. A partial unique index on `(monitor_id) WHERE
   resolved_at IS NULL` makes duplicate open incidents impossible.
 - On success: reset the counter and resolve the open incident.
@@ -113,7 +115,7 @@ Freshness window = `max(3 × interval, 120s) + request_timeout`.
   resolved address is loopback, private, link-local, multicast, reserved, or
   otherwise non-global (including IPv4-mapped IPv6), the check is recorded as
   `blocked_destination` and no connection is made.
-- The socket is pinned to a vetted IP; the HTTP `Host` header and TLS SNI
+- The socket is pinned to a vetted IP; the HTTP Host header and TLS SNI
   keep the original hostname. DNS is revalidated on every check because DNS
   can change between checks.
 - Redirects are disabled; proxy environment variables are not trusted.
@@ -126,3 +128,21 @@ Check results older than `retention_days` (default 30) are deleted in bounded
 batches of 1000 — each batch is its own short transaction, never one
 long-running delete over the whole table. Incidents persist until their
 monitor is deleted.
+
+## v0.2 — Alerting Engine
+
+The webhook dispatcher runs in the existing worker process. When an incident
+opens or resolves, `persist_check_result` writes the incident transition,
+a `notification_events` outbox record, and one `webhook_deliveries` row per
+enabled subscribed endpoint in the same PostgreSQL transaction.
+
+The dispatcher claims due deliveries with `FOR UPDATE SKIP LOCKED`, commits
+the lease before network I/O, sends a signed HTTPS POST, then records an
+attempt. Expired leases are reclaimable. Retryable network failures, timeouts,
+HTTP 408/425/429, and HTTP 5xx use exponential backoff with jitter; permanent
+receiver rejections, redirects, blocked destinations, and exhausted retries
+become terminal failures.
+
+Delivery is at-least-once. Receivers should deduplicate using the stable
+`X-Pulse-Event-ID` header. See `docs/alerting.md` for the event contract,
+API, security policy, retry rules, and operational behavior.

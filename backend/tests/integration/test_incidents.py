@@ -381,3 +381,30 @@ def test_stale_worker_cannot_commit(error_http_server):
     assert cur.fetchone()[0] == 0
     cur.close()
     conn.close()
+
+    # A released lease must not allow an old worker to commit after the fact.
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE monitors SET lease_until = NULL, lease_token = NULL WHERE id = %s",
+        (m["id"],),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    committed = persist_check_result(
+        monitor_id=m["id"],
+        claim_token=token_a,
+        checked_at=datetime.now(timezone.utc),
+        result=result,
+        interval_seconds=60,
+    )
+    assert committed is False
+
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM check_results WHERE monitor_id = %s", (m["id"],))
+    assert cur.fetchone()[0] == 0
+    cur.close()
+    conn.close()
