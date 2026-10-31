@@ -15,8 +15,8 @@ from backend.app.db.webhooks import (
     update_webhook_endpoint,
     webhook_endpoint_exists,
 )
-from backend.app.monitoring.webhook import parse_and_validate_webhook_url
 from backend.app.monitoring.url_policy import UrlPolicyError
+from backend.app.monitoring.webhook import parse_and_validate_webhook_url
 
 router = APIRouter()
 
@@ -106,12 +106,22 @@ def _validate_event_types(event_types: list[str]):
     if not event_types:
         raise HTTPException(
             status_code=422,
-            detail={"error": {"code": "invalid_event_types", "message": "Select at least one event."}},
+            detail={
+                "error": {
+                    "code": "invalid_event_types",
+                    "message": "Select at least one event.",
+                }
+            },
         )
     if len(set(event_types)) != len(event_types):
         raise HTTPException(
             status_code=422,
-            detail={"error": {"code": "duplicate_event_types", "message": "Event types must be unique."}},
+            detail={
+                "error": {
+                    "code": "duplicate_event_types",
+                    "message": "Event types must be unique.",
+                }
+            },
         )
 
 
@@ -121,7 +131,12 @@ def create_webhook(req: WebhookCreateRequest):
     if not name:
         raise HTTPException(
             status_code=422,
-            detail={"error": {"code": "invalid_name", "message": "Webhook name cannot be blank."}},
+            detail={
+                "error": {
+                    "code": "invalid_name",
+                    "message": "Webhook name cannot be blank.",
+                }
+            },
         )
     _validate_event_types(req.event_types)
 
@@ -151,7 +166,12 @@ def patch_webhook(endpoint_id: int, req: WebhookUpdateRequest):
         if not updates["name"]:
             raise HTTPException(
                 status_code=422,
-                detail={"error": {"code": "invalid_name", "message": "Webhook name cannot be blank."}},
+                detail={
+                    "error": {
+                        "code": "invalid_name",
+                        "message": "Webhook name cannot be blank.",
+                    }
+                },
             )
 
     if "url" in updates:
@@ -166,7 +186,12 @@ def patch_webhook(endpoint_id: int, req: WebhookUpdateRequest):
     if "secret" in updates and not updates["secret"]:
         raise HTTPException(
             status_code=422,
-            detail={"error": {"code": "invalid_secret", "message": "Webhook secret cannot be blank."}},
+            detail={
+                "error": {
+                    "code": "invalid_secret",
+                    "message": "Webhook secret cannot be blank.",
+                }
+            },
         )
 
     if not updates:
