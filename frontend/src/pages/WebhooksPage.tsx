@@ -107,6 +107,17 @@ export function WebhooksPage() {
     }
   }
 
+  async function handleEnable(endpoint: WebhookEndpoint) {
+    setActionError(null);
+    try {
+      await api.updateWebhook(endpoint.id, { enabled: true });
+      await reloadEndpoints();
+      setSelectedId(endpoint.id);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not enable webhook.");
+    }
+  }
+
   async function copySecret() {
     if (!createdSecret) return;
     try {
@@ -249,8 +260,8 @@ export function WebhooksPage() {
                             {endpoint.event_types.map(eventLabel).join(" · ")}
                           </p>
                         </button>
-                        {endpoint.enabled && (
-                          <div className="mt-3 flex justify-end">
+                        <div className="mt-3 flex justify-end">
+                          {endpoint.enabled ? (
                             <Button
                               type="button"
                               variant="danger"
@@ -259,8 +270,16 @@ export function WebhooksPage() {
                             >
                               Disable
                             </Button>
-                          </div>
-                        )}
+                          ) : (
+                            <Button
+                              type="button"
+                              className="px-2 py-1 text-xs"
+                              onClick={() => handleEnable(endpoint)}
+                            >
+                              Enable
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </li>
                   );
