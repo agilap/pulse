@@ -4,6 +4,7 @@ import statistics
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import psycopg
 from fastapi.testclient import TestClient
@@ -14,7 +15,7 @@ from backend.app.main import app
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql://pulse:changeme-not-a-real-secret@localhost:5432/pulse"
 )
-MIGRATE_SCRIPT = "/home/alex/pulse/scripts/migrate.py"
+MIGRATE_SCRIPT = str(Path(__file__).resolve().parents[1] / "scripts" / "migrate.py")
 MONITOR_COUNT = 50
 REQUESTS_PER_ENDPOINT = 100
 
