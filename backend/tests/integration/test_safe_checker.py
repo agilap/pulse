@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 
@@ -15,7 +16,7 @@ from backend.app.monitoring.checker import CheckOutcome, execute_check
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql://pulse:changeme-not-a-real-secret@localhost:5432/pulse"
 )
-MIGRATE_SCRIPT = "/home/alex/pulse/scripts/migrate.py"
+MIGRATE_SCRIPT = str(Path(__file__).resolve().parents[3] / "scripts" / "migrate.py")
 
 
 def _run_migrations():
