@@ -32,4 +32,15 @@ def validate_worker_config():
             f"LEASE_DURATION_SECONDS must be positive, got {lease_seconds}"
         )
 
-    return {"request_timeout": request_timeout, "lease_seconds": lease_seconds}
+    if settings.webhook_concurrency < 1:
+        raise ValueError("WEBHOOK_CONCURRENCY must be at least 1")
+
+    if settings.webhook_max_attempts < 1:
+        raise ValueError("WEBHOOK_MAX_ATTEMPTS must be at least 1")
+
+    return {
+        "request_timeout": request_timeout,
+        "lease_seconds": lease_seconds,
+        "webhook_concurrency": settings.webhook_concurrency,
+        "webhook_max_attempts": settings.webhook_max_attempts,
+    }

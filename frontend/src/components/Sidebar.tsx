@@ -4,6 +4,7 @@ const NAV = [
   { to: "/", label: "Overview", end: true },
   { to: "/monitors", label: "Monitors", end: false },
   { to: "/incidents", label: "Incidents", end: false },
+  { to: "/webhooks", label: "Webhooks", end: false },
 ];
 
 function PulseMark() {
@@ -34,13 +35,12 @@ export function Sidebar() {
             key={item.to}
             to={item.to}
             end={item.end}
-            className={({ isActive }) =>
-              `rounded-md px-2.5 py-1.5 text-sm transition-colors ${
-                isActive
-                  ? "bg-raised text-ink font-medium"
-                  : "text-ink-dim hover:bg-raised/60 hover:text-ink"
-              }`
-            }
+            className={({ isActive }) => {
+              const active = isActive
+                ? "bg-raised text-ink font-medium"
+                : "text-ink-dim hover:bg-raised/60 hover:text-ink";
+              return "rounded-md px-2.5 py-1.5 text-sm transition-colors " + active;
+            }}
           >
             {item.label}
           </NavLink>

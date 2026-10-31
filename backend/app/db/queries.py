@@ -1,4 +1,7 @@
 from datetime import datetime, timedelta
+from uuid import uuid4
+
+from psycopg.types.json import Jsonb
 
 from backend.app.config import settings
 from backend.app.db.core import get_conn
@@ -131,6 +134,74 @@ def monitor_exists(monitor_id: int) -> bool:
     return row is not None
 
 
+def _enqueue_notification_event(
+    conn,
+    *,
+    event_type: str,
+    incident_id: int,
+    monitor_id: int,
+    monitor_url: str,
+    interval_seconds: int,
+    started_at: datetime,
+    last_failure_at: datetime,
+    failure_count_at_open: int,
+    occurred_at: datetime,
+    resolved_at: datetime | None = None,
+):
+    """Persist an event and fan it out to subscribed endpoints in this transaction."""
+    event_id = uuid4()
+    incident_payload = {
+        "id": incident_id,
+        "started_at": started_at.isoformat(),
+        "last_failure_at": last_failure_at.isoformat(),
+        "failure_count_at_open": failure_count_at_open,
+    }
+    if resolved_at is not None:
+        incident_payload["resolved_at"] = resolved_at.isoformat()
+
+    payload = {
+        "id": str(event_id),
+        "type": event_type,
+        "occurred_at": occurred_at.isoformat(),
+        "monitor": {
+            "id": monitor_id,
+            "url": monitor_url,
+            "interval_seconds": interval_seconds,
+        },
+        "incident": incident_payload,
+    }
+
+    conn.execute(
+        """
+        INSERT INTO notification_events (id, event_type, incident_id, monitor_id, payload)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (incident_id, event_type) DO NOTHING
+        """,
+        (event_id, event_type, incident_id, monitor_id, Jsonb(payload)),
+    )
+
+    persisted_event = conn.execute(
+        """
+        SELECT id FROM notification_events
+        WHERE incident_id = %s AND event_type = %s
+        """,
+        (incident_id, event_type),
+    ).fetchone()
+    persisted_event_id = persisted_event[0]
+
+    conn.execute(
+        """
+        INSERT INTO webhook_deliveries (event_id, endpoint_id)
+        SELECT %s, id
+        FROM webhook_endpoints
+        WHERE enabled = TRUE
+          AND event_types @> ARRAY[%s]::TEXT[]
+        ON CONFLICT (event_id, endpoint_id) DO NOTHING
+        """,
+        (persisted_event_id, event_type),
+    )
+
+
 def persist_check_result(
     monitor_id: int,
     claim_token: str,
@@ -140,9 +211,9 @@ def persist_check_result(
 ) -> bool:
     """Persist a check result atomically with monitor updates and incident transitions.
 
-    FR-09: result insert, counter/summary update, and incident open/resolve
-    happen in ONE transaction so displayed state can never contradict the
-    stored result. If the DB write fails, everything rolls back together.
+    Result persistence, monitor summary updates, incident transitions, and
+    notification event fan-out share one transaction. A failed transaction
+    cannot leave an incident transition without its corresponding outbox event.
 
     Optimistic locking (WHERE lease_token = %s) means a stale worker whose
     lease was superseded cannot commit — returns False in that case.
@@ -154,19 +225,22 @@ def persist_check_result(
     next_check = checked_at + timedelta(seconds=interval_seconds)
 
     with get_conn() as conn:
-        # Read current state inside the transaction we will write in.
         row = conn.execute(
-            "SELECT consecutive_failures FROM monitors WHERE id = %s FOR UPDATE",
+            """
+            SELECT consecutive_failures, url
+            FROM monitors
+            WHERE id = %s
+            FOR UPDATE
+            """,
             (monitor_id,),
         ).fetchone()
         if row is None:
             conn.rollback()
             return False
 
-        current_failures = row[0]
+        current_failures, monitor_url = row
         new_failures = 0 if is_success else current_failures + 1
 
-        # 1. Insert the check result
         conn.execute(
             """
             INSERT INTO check_results
@@ -185,8 +259,6 @@ def persist_check_result(
             ),
         )
 
-        # 2. Update monitor summary + schedule next check, clearing the lease.
-        #    Optimistic lock: only if our claim token is still current.
         cur = conn.execute(
             """
             UPDATE monitors
@@ -214,37 +286,65 @@ def persist_check_result(
         )
 
         if cur.rowcount == 0:
-            # Claim was superseded by another worker — discard everything.
             conn.rollback()
             return False
 
-        # 3. Incident state transition
         if is_success:
-            # Resolve any open incident
-            conn.execute(
+            resolved_incidents = conn.execute(
                 """
                 UPDATE incidents
                 SET resolved_at = %s
                 WHERE monitor_id = %s AND resolved_at IS NULL
+                RETURNING id, started_at, last_failure_at, resolved_at,
+                          failure_count_at_open
                 """,
                 (checked_at, monitor_id),
-            )
+            ).fetchall()
+
+            for incident in resolved_incidents:
+                _enqueue_notification_event(
+                    conn,
+                    event_type="incident.resolved",
+                    incident_id=incident[0],
+                    monitor_id=monitor_id,
+                    monitor_url=monitor_url,
+                    interval_seconds=interval_seconds,
+                    started_at=incident[1],
+                    last_failure_at=incident[2],
+                    failure_count_at_open=incident[4],
+                    occurred_at=checked_at,
+                    resolved_at=incident[3],
+                )
+
         elif new_failures >= threshold:
-            # Open an incident only if none is open; otherwise extend it.
             open_incident = conn.execute(
                 "SELECT id FROM incidents WHERE monitor_id = %s AND resolved_at IS NULL",
                 (monitor_id,),
             ).fetchone()
 
             if open_incident is None:
-                conn.execute(
+                incident = conn.execute(
                     """
                     INSERT INTO incidents
                         (monitor_id, started_at, last_failure_at,
                          failure_count_at_open)
                     VALUES (%s, %s, %s, %s)
+                    RETURNING id, started_at, last_failure_at, failure_count_at_open
                     """,
                     (monitor_id, checked_at, checked_at, new_failures),
+                ).fetchone()
+
+                _enqueue_notification_event(
+                    conn,
+                    event_type="incident.opened",
+                    incident_id=incident[0],
+                    monitor_id=monitor_id,
+                    monitor_url=monitor_url,
+                    interval_seconds=interval_seconds,
+                    started_at=incident[1],
+                    last_failure_at=incident[2],
+                    failure_count_at_open=incident[3],
+                    occurred_at=checked_at,
                 )
             else:
                 conn.execute(

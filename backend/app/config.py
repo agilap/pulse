@@ -19,10 +19,13 @@ class Settings(BaseSettings):
     # Worker
     lease_duration_seconds: float = 30.0
     worker_concurrency: int = 5
+    webhook_concurrency: int = 10
+    webhook_max_attempts: int = 8
     monitor_cap: int = 50
 
     # Retention (days)
     retention_days: int = 30
+    notification_retention_days: int = 90
 
     # API server
     api_host: str = "127.0.0.1"
